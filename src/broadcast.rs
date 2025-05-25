@@ -7,11 +7,10 @@ use tokio::sync::broadcast::error::SendError;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use yrs::encoding::write::Write;
-use yrs::sync::protocol::{AsyncProtocol, MSG_SYNC, MSG_SYNC_UPDATE};
+use yrs::sync::protocol::{AsyncProtocol};
 use yrs::sync::{DefaultProtocol, Error, Message, SyncMessage};
 use yrs::updates::decoder::Decode;
-use yrs::updates::encoder::{Encode, Encoder, EncoderV1};
+use yrs::updates::encoder::{Encode};
 use yrs::Update;
 
 /// A broadcast group can be used to propagate updates produced by yrs [yrs::Doc] and [Awareness]
@@ -20,7 +19,6 @@ use yrs::Update;
 /// New receivers can subscribe to a broadcasting group via [BroadcastGroup::subscribe] method.
 pub struct BroadcastGroup {
     awareness_sub: yrs::Subscription,
-    doc_sub: yrs::Subscription,
     awareness_ref: AwarenessRef,
     sender: Sender<Vec<u8>>,
     receiver: Receiver<Vec<u8>>,
@@ -40,23 +38,7 @@ impl BroadcastGroup {
     pub async fn new(awareness: AwarenessRef, buffer_capacity: usize) -> Self {
         let (sender, receiver) = channel(buffer_capacity);
         let awareness_c = Arc::downgrade(&awareness);
-        let mut lock = awareness.write().await;
-        let sink = sender.clone();
-        let doc_sub = {
-            lock.doc_mut()
-                .observe_update_v1(move |_txn, u| {
-                    // we manually construct msg here to avoid update data copying
-                    let mut encoder = EncoderV1::new();
-                    encoder.write_var(MSG_SYNC);
-                    encoder.write_var(MSG_SYNC_UPDATE);
-                    encoder.write_buf(&u.update);
-                    let msg = encoder.to_vec();
-                    if let Err(_e) = sink.send(msg) {
-                        // current broadcast group is being closed
-                    }
-                })
-                .unwrap()
-        };
+        let lock: tokio::sync::RwLockWriteGuard<'_, yrs::sync::Awareness> = awareness.write().await;
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let sink = sender.clone();
         let awareness_sub = lock.on_update(move |_, e, _| {
@@ -98,7 +80,6 @@ impl BroadcastGroup {
             sender,
             receiver,
             awareness_sub,
-            doc_sub,
         }
     }
 
@@ -224,7 +205,9 @@ impl BroadcastGroup {
             }
             Message::Awareness(update) => {
                 let mut awareness = awareness.write().await;
-                protocol.handle_awareness_update(&mut *awareness, update).await
+                protocol
+                    .handle_awareness_update(&mut *awareness, update)
+                    .await
             }
             Message::Custom(tag, data) => {
                 let mut awareness = awareness.write().await;
@@ -338,7 +321,8 @@ mod test {
         // check awareness update propagation
         {
             let a = awareness.write().await;
-            a.set_local_state(serde_json::json!({"key":"value"})).unwrap();
+            a.set_local_state(serde_json::json!({"key":"value"}))
+                .unwrap();
         }
 
         let msg = client_receiver.next().await;
