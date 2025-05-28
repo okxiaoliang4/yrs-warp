@@ -7,10 +7,10 @@ use tokio::sync::broadcast::error::SendError;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use yrs::sync::protocol::{AsyncProtocol};
+use yrs::sync::protocol::AsyncProtocol;
 use yrs::sync::{DefaultProtocol, Error, Message, SyncMessage};
 use yrs::updates::decoder::Decode;
-use yrs::updates::encoder::{Encode};
+use yrs::updates::encoder::Encode;
 use yrs::Update;
 
 /// A broadcast group can be used to propagate updates produced by yrs [yrs::Doc] and [Awareness]
